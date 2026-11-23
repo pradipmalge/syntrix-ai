@@ -1,0 +1,22 @@
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: syntrixai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: syntrixai
+      POSTGRES_USER: syntrixai
+      POSTGRES_PASSWORD: syntrixai_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - syntrixai_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syntrixai -d syntrixai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  syntrixai_postgres_data:
