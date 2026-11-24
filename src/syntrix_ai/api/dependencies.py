@@ -19,7 +19,7 @@ from syntrix_ai.application.services.conversation_service import (
 )
 from syntrix_ai.application.services.llm_service import LLMService
 
-@lru_cache
+@lru_cache(maxsize=1)
 def get_llm_service() -> LLMService:
     provider = LLMProviderFactory.create()
     return LLMService(provider)

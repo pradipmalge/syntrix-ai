@@ -12,7 +12,7 @@ class LLMMessage(BaseModel):
 class LLMRequest(BaseModel):
     messages: list[LLMMessage] = Field(min_length=1)
     model: str | None = None
-    temperature: float = Field(default=0.3, ge=0, le=2)
+    temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, gt=0)
 
 

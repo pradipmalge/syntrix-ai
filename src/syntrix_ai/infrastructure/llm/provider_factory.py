@@ -6,16 +6,38 @@ from syntrix_ai.infrastructure.llm.ollama_provider import OllamaProvider
 
 class LLMProviderFactory:
 
-    @staticmethod
-    def create() -> LLMProvider:
+    _providers: dict[str, type[LLMProvider]] = {
+        "ollama": OllamaProvider,
+    }
+
+    @classmethod
+    def register_provider(
+        cls,
+        name: str,
+        provider_class: type[LLMProvider],
+    ) -> None:
+        cls._providers[name.strip().lower()] = provider_class
+
+    @classmethod
+    def create(
+        cls,
+        provider_name: str | None = None,
+    ) -> LLMProvider:
 
         settings = get_settings()
 
-        provider = settings.llm_provider.lower()
+        selected_provider = (
+            provider_name or settings.llm_provider
+        ).strip().lower()
 
-        if provider == "ollama":
-            return OllamaProvider()
+        provider_class = cls._providers.get(selected_provider)
 
-        raise ValueError(
-            f"Unsupported LLM provider: {provider}"
-        )
+        if provider_class is None:
+            available = ", ".join(sorted(cls._providers))
+
+            raise ValueError(
+                f"Unsupported LLM provider: '{selected_provider}'. "
+                f"Available providers: {available}"
+            )
+
+        return provider_class()
