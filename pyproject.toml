@@ -15,7 +15,7 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "pydantic-settings>=2.16.3",
     "python-json-logger>=4.2.0",
-    "sqlalchemy>=2.1.9",
+    "sqlalchemy[asyncio]>=2.1.9",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -34,3 +34,7 @@ dev = [
     "pytest-asyncio>=1.5.0",
     "ruff>=0.17.6",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
