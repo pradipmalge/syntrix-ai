@@ -7,7 +7,7 @@ from syntrix_ai.application.services.conversation_service import (
 from syntrix_ai.application.services.llm_service import LLMService
 from syntrix_ai.domain.models.llm import LLMMessage, LLMRequest
 from syntrix_ai.api.schemas.chat import ChatResponse
-
+from collections.abc import AsyncIterator
 
 class ConversationChatService:
 
@@ -80,3 +80,71 @@ class ConversationChatService:
             user_message=user_message,
             assistant_message=assistant_message,
         )
+
+
+    async def stream_chat(
+        self,
+        conversation_id: UUID,
+        content: str,
+    ) -> AsyncIterator[str]:
+
+        # 1. Persist user message
+        user_message = await self._conversation_service.add_message(
+            conversation_id=conversation_id,
+            role="user",
+            content=content,
+        )
+
+        if user_message is None:
+            raise ValueError("Conversation not found")
+
+        # 2. Load conversation history
+        history = await self._conversation_service.get_messages(
+            conversation_id=conversation_id,
+            limit=50,
+            offset=0,
+        )
+
+        if history is None:
+            raise ValueError("Conversation not found")
+
+        # 3. Convert history into LLM messages
+        llm_messages = [
+            LLMMessage(
+                role=message.role,
+                content=message.content,
+            )
+            for message in history
+        ]
+
+        llm_request = LLMRequest(messages=llm_messages)
+
+        # 4. Stream response and accumulate content
+        response_chunks = []
+
+        async for chunk in self._llm_service.stream(llm_request):
+            if chunk:
+                response_chunks.append(chunk)
+                yield chunk
+
+        # 5. Persist completed assistant response
+        assistant_content = "".join(response_chunks)
+
+        if not assistant_content:
+            raise RuntimeError("LLM returned an empty response")
+
+        await self._conversation_service.add_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=assistant_content,
+        )
+
+
+    async def conversation_exists(self, conversation_id: UUID) -> bool:
+        messages = await self._conversation_service.get_messages(
+            conversation_id=conversation_id,
+            limit=1,
+            offset=0,
+        )
+
+        return messages is not None

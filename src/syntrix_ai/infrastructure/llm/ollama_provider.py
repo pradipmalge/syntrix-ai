@@ -1,4 +1,3 @@
-
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -14,11 +13,18 @@ from syntrix_ai.domain.models.llm import (
     TokenUsage,
 )
 
+from collections.abc import AsyncIterator
 
 class OllamaProvider(LLMProvider):
 
     def __init__(self):
-        self.settings = get_settings()
+        settings = get_settings()
+        self.settings = settings
+        self._llm = ChatOllama(
+            model=settings.llm_model,
+            base_url=settings.ollama_base_url,
+            temperature=0,
+        )
 
     async def generate(
         self,
@@ -71,6 +77,40 @@ class OllamaProvider(LLMProvider):
             metadata=response.response_metadata or {},
         )
 
+
+    async def stream(self, request: LLMRequest) -> AsyncIterator[str]:
+        role_mapping = {
+            "system": SystemMessage,
+            "user": HumanMessage,
+            "assistant": AIMessage,
+        }
+
+        messages = [
+            role_mapping[message.role](content=message.content)
+            for message in request.messages
+            if message.role in role_mapping
+        ]
+
+        if len(messages) != len(request.messages):
+            raise ValueError("Unsupported message role in LLM request")
+
+        model_name = request.model or self.settings.llm_model
+
+        model = ChatOllama(
+            model=model_name,
+            base_url=self.settings.ollama_base_url,
+            temperature=request.temperature,
+            num_predict=request.max_tokens,
+            reasoning=False,
+        )
+
+        async for chunk in model.astream(messages):
+            content = chunk.content
+
+            if isinstance(content, str) and content:
+                yield content
+
+    
     async def health_check(self) -> bool:
         try:
             model = ChatOllama(

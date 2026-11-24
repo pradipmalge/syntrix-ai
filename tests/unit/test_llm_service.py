@@ -20,6 +20,10 @@ class FakeLLMProvider(LLMProvider):
             usage=TokenUsage(),
         )
 
+    async def stream(self, request):
+        for chunk in ["Hello", " ", "SyntrixAI"]:
+            yield chunk
+
     async def health_check(self) -> bool:
         return True
 
