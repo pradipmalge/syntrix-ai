@@ -3,4 +3,8 @@ from syntrix_ai.infrastructure.persistence.models.conversation import (
 )
 from syntrix_ai.infrastructure.persistence.models.message import Message
 
-__all__ = ["Conversation", "Message"]
+from syntrix_ai.infrastructure.persistence.models.document import (
+    DocumentRecord,
+)
+
+__all__ = ["Conversation", "Message", "DocumentRecord"]

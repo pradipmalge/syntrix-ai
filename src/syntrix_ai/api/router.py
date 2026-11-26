@@ -4,7 +4,16 @@ from fastapi import APIRouter
 from syntrix_ai.api.routes import chat, conversations
 from syntrix_ai.api.routes.health import router as health_router
 from syntrix_ai.api.routes.llm import router as llm_router
+from syntrix_ai.rag.api.routes.documents import (
+    router as documents_router,
+)
+from syntrix_ai.rag.api.routes.retrieval import (
+    router as retrieval_router,
+)
 
+from syntrix_ai.rag.api.routes.answers import (
+    router as answers_router,
+)
 
 api_router = APIRouter()
 
@@ -12,3 +21,6 @@ api_router.include_router(health_router)
 api_router.include_router(llm_router)
 api_router.include_router(conversations.router)
 api_router.include_router(chat.router)
+api_router.include_router(documents_router)
+api_router.include_router(retrieval_router)
+api_router.include_router(answers_router)
