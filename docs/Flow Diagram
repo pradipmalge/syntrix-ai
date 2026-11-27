@@ -1,0 +1,126 @@
+# SyntrixAI request flows
+
+FastAPI modular monolith with Ollama for chat and embeddings, PostgreSQL for conversations and document metadata, Qdrant for vectors, and OpenTelemetry for traces and metrics. Built from the code under src/syntrix_ai.
+
+System
+
+## Architecture overview
+
+Routes call application services. Services depend on domain interfaces, and infrastructure adapters implement them.
+
+```mermaid
+flowchart LR
+  Client([Client]) --> API["FastAPI /api/v1health, llm, conversations,chat, documents, retrieval, answers"]
+  API --> G["Guardrailsinput validation +prompt injection guard"]
+  API --> CS[Conversation services]
+  API --> RAG[RAG services]
+  G --> LLM[LLM service]
+  CS --> LLM
+  RAG --> LLM
+  LLM --> PF[Provider factory]
+  PF --> OL["Ollama chat modelretry + error handling"]
+  RAG --> EMB[Ollama embeddings]
+  RAG --> QD[("Qdrantvectors")]
+  CS --> PG[("PostgreSQLconversations, messages, documents")]
+  RAG --> PG
+  API -. spans, metrics .-> OT[OTel collector]
+  OT --> JG[Jaeger]
+  API -. /metrics .-> PR[Prometheus]
+  PR --> GF[Grafana]
+```
+
+Chat
+
+## Conversation chat
+
+POST /conversations/{id}/chat. The streaming variant, /chat/stream, checks the conversation first, then sends token events over SSE and saves the full reply at the end.
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant R as chat route
+  participant S as ConversationChatService
+  participant DB as PostgreSQL
+  participant L as LLMService / Ollama
+  C->>R: POST content
+  R->>S: chat(conversation_id, content)
+  S->>DB: save user message
+  alt conversation not found
+    S-->>R: None
+    R-->>C: 404
+  else found
+    S->>DB: load last 50 messages
+    S->>L: generate(history)
+    L-->>S: content + token usage
+    S->>DB: save assistant message
+    S-->>R: ChatResponse
+    R-->>C: 200
+  end
+  Note over R,C: Any exception returns 502
+```
+
+Knowledge
+
+## Document ingestion
+
+POST /documents. Status moves from pending to processing to indexed, or to failed with the error saved.
+
+```mermaid
+flowchart TD
+  U([Upload file]) --> A["Create document recordstatus = pending"]
+  A --> B[status = processing]
+  B --> C["Pick loader by filenameand content typePDF, DOCX, text"]
+  C --> D[Extract text]
+  D --> E[Split into chunks]
+  E --> F{Any chunks?}
+  F -- no --> X
+  F -- yes --> G[Embed chunks with Ollama]
+  G --> H{Embedding countequals chunk count?}
+  H -- no --> X
+  H -- yes --> I[Upsert vectors to Qdrant]
+  I --> J["status = indexed"]
+  J --> K([Return chunk count + dimension])
+  X["Rollback, status = failedsave error message"] --> Y([Raise error])
+```
+
+Knowledge
+
+## RAG answer
+
+POST /answers. Input is validated and checked for prompt injection first. With a conversation id, history is loaded and the question is rewritten into a standalone search query.
+
+```mermaid
+flowchart TD
+  Q([Question]) --> V["Validate inputmax 12,000 chars"]
+  V --> P{Prompt injectiondetected?}
+  P -- yes --> BL([Blocked])
+  P -- no --> CID{conversation_idgiven?}
+  CID -- yes --> H[Load last 20 user and assistant messages]
+  H --> RW["Rewrite follow-up asstandalone query (LLM, temp 0)"]
+  RW --> SU[Save user message]
+  SU --> EM
+  CID -- no --> EM[Embed query]
+  EM --> QS["Search Qdrantfilter by tenant and knowledge basetop_k, score threshold"]
+  QS --> CTX["Build context with source labels S1, S2, ...wrapped as untrusted reference material"]
+  CTX --> PR["Prompt = system rules + history + question + context"]
+  PR --> GEN["LLM generatetemp 0.2, max 1000 tokens"]
+  GEN --> SA{conversation_id?}
+  SA -- yes --> SAVE[Save assistant message with usage]
+  SA -- no --> OUT
+  SAVE --> OUT([Answer + cited sources])
+```
+
+Security
+
+## Guardrails on /llm/generate and /answers
+
+The conversation chat routes do not call the guardrails in the current code.
+
+```mermaid
+flowchart LR
+  In([User input]) --> IV[InputValidationService]
+  IV -->|too long or empty| R1([Rejected])
+  IV -->|ok| PD[PromptInjectionDetectorpattern matching]
+  PD -->|match| R2([PromptInjectionBlockedError])
+  PD -->|clean| Go([Continue to LLM or retrieval])
+```
