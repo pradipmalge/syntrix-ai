@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from uuid import UUID
 
 from syntrix_ai.rag.domain.models import DocumentStatus
 
@@ -59,7 +60,8 @@ class RetrievalResponse(BaseModel):
 class RAGAskRequest(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=100)
     question: str = Field(min_length=1, max_length=4000)
-    top_k: int = Field(default=5, ge=1, le=20)
+    conversation_id: UUID | None = None
+    top_k: int = Field(default=5, ge=1, le=50)
     score_threshold: float | None = Field(
         default=None,
         ge=0.0,

@@ -53,22 +53,33 @@ class MessageRepository:
 
         return message
 
+    
     async def list_by_conversation(
         self,
         conversation_id: UUID,
         limit: int = 50,
         offset: int = 0,
     ) -> list[Message]:
+        # Fetch the latest messages first.
         statement = (
             select(Message)
             .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.asc(), Message.id.asc())
+            .order_by(
+                Message.created_at.desc(),
+                Message.id.desc(),
+            )
             .limit(limit)
             .offset(offset)
         )
 
         result = await self.session.execute(statement)
-        return list(result.scalars().all())
+
+        # Reverse the result to restore chronological order.
+        messages = list(result.scalars().all())
+        messages.reverse()
+
+        return messages
+
 
     async def count_by_conversation(
         self,

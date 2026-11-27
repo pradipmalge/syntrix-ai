@@ -37,6 +37,16 @@ from syntrix_ai.rag.application.services.rag_answer_service import (
     RAGAnswerService,
 )
 
+from syntrix_ai.application.services.conversation_service import (
+    ConversationService,
+)
+from syntrix_ai.application.services.conversation_context_service import (
+    ConversationContextService,
+)
+from syntrix_ai.application.services.question_rewriter_service import (
+    QuestionRewriterService,
+)
+
 def get_document_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> DocumentRepository:
@@ -85,13 +95,42 @@ def get_retrieval_service(
         vector_store=vector_store,
     )
 
+def get_conversation_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> ConversationService:
+    return ConversationService(session)
+
+def get_conversation_context_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> ConversationContextService:
+    conversation_service = ConversationService(session)
+
+    return ConversationContextService(
+        conversation_service=conversation_service,
+    )
+
 def get_rag_answer_service(
     retrieval_service: RetrievalService = Depends(
         get_retrieval_service
     ),
     llm_service: LLMService = Depends(get_llm_service),
+    conversation_context_service: ConversationContextService = Depends(
+        get_conversation_context_service
+    ),
+    conversation_service: ConversationService = Depends(
+        get_conversation_service
+    ),
 ) -> RAGAnswerService:
+
+    question_rewriter_service = QuestionRewriterService(
+        llm_service=llm_service,
+    )
+
     return RAGAnswerService(
         retrieval_service=retrieval_service,
         llm_service=llm_service,
+        conversation_context_service=conversation_context_service,
+        question_rewriter_service=question_rewriter_service,
+        conversation_service=conversation_service,
     )
+

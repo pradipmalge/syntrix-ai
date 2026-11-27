@@ -3,6 +3,13 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from syntrix_ai.guardrails.application.services.input_validation_service import (
+    InputValidationError,
+    InputValidationService,
+)
+from syntrix_ai.guardrails.application.services.prompt_injection_guard_service import (
+    PromptInjectionGuardService,
+)
 from syntrix_ai.rag.api.dependencies import get_rag_answer_service
 from syntrix_ai.rag.api.schemas import (
     RAGAskRequest,
@@ -20,6 +27,9 @@ router = APIRouter(
     tags=["RAG Answer Generation"],
 )
 
+input_validator = InputValidationService(max_length=12_000)
+prompt_injection_guard = PromptInjectionGuardService()
+
 
 @router.post(
     "/{knowledge_base_id}/ask",
@@ -33,13 +43,43 @@ async def ask_knowledge_base(
         get_rag_answer_service
     ),
 ):
+    # Step 1: Validate the question.
+    try:
+        validated_question = input_validator.validate_text(
+            request.question,
+            field_name="question",
+        )
+
+    except InputValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    # Step 2: Inspect for prompt injection.
+    detection = prompt_injection_guard.inspect(validated_question)
+
+    if not detection.allowed:
+        logger.warning(
+            "RAG prompt injection blocked: knowledge_base_id=%s categories=%s",
+            knowledge_base_id,
+            detection.matched_patterns,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request blocked by prompt injection security policy.",
+        )
+
+    # Step 3: Execute RAG with validated input.
     try:
         result = await rag_service.answer(
-            question=request.question,
+            question=validated_question,
             tenant_id=request.tenant_id,
             knowledge_base_id=knowledge_base_id,
             top_k=request.top_k,
             score_threshold=request.score_threshold,
+            conversation_id=request.conversation_id,
         )
 
         return RAGAskResponse(
